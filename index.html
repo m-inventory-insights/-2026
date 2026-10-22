@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#11253f">
+  <meta name="description" content="لوحة تحليل الفواتير والتسليمات والمرتجعات ومبيعات البائعين والمنتجات.">
+  <title>مركز تحليل المبيعات والتسليمات</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div>
+        <div class="brand-name">مركز تحليل المبيعات</div>
+        <div class="brand-subtitle">الفواتير · التسليمات · المرتجعات</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span id="data-status" class="status-pill status-idle"><span class="status-dot"></span> في انتظار الملفات</span>
+      <button id="export-workbook" class="button button-light" disabled><span aria-hidden="true">↓</span> تنزيل التقرير الكامل Excel</button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <section class="import-panel" aria-labelledby="import-title">
+      <div class="import-intro">
+        <div class="eyebrow">ابدأ من هنا</div>
+        <h1 id="import-title">حلّل بياناتك في مكان واحد</h1>
+        <p>ارفع ملفات الشهر الثلاثة، وسيتم ربط المستندات تلقائيًا وتجهيز تقارير المنتجات والبائعين والأوامر غير المفوترة.</p>
+      </div>
+      <div class="upload-grid">
+        <label class="upload-card" for="invoice-file">
+          <span class="upload-icon invoice-icon" aria-hidden="true">▤</span>
+          <span class="upload-copy"><strong>ملف الفواتير</strong><small id="invoice-file-label">يحتوي على Origin وTotal Signed</small></span>
+          <span class="upload-action">اختيار ملف</span>
+          <input id="invoice-file" type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv">
+        </label>
+        <label class="upload-card" for="delivery-file">
+          <span class="upload-icon delivery-icon" aria-hidden="true">⇢</span>
+          <span class="upload-copy"><strong>ملف التسليمات</strong><small id="delivery-file-label">يحتوي على Source Document وReference</small></span>
+          <span class="upload-action">اختيار ملف</span>
+          <input id="delivery-file" type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv">
+        </label>
+        <label class="upload-card" for="return-file">
+          <span class="upload-icon return-icon" aria-hidden="true">↶</span>
+          <span class="upload-copy"><strong>ملف المرتجعات</strong><small id="return-file-label">يحتوي على Source Document وReference</small></span>
+          <span class="upload-action">اختيار ملف</span>
+          <input id="return-file" type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv">
+        </label>
+      </div>
+      <div class="import-footer">
+        <div class="privacy-note"><span aria-hidden="true">◈</span><span><strong>خصوصية البيانات:</strong> الملفات تُقرأ داخل المتصفح ولا تُرفع إلى خادم التحليل. لا تضع ملفات العمل نفسها داخل مستودع GitHub العام.</span></div>
+        <button id="analyze-files" class="button button-primary" disabled>تحليل الملفات <span aria-hidden="true">←</span></button>
+      </div>
+      <div id="import-message" class="import-message" role="status" hidden></div>
+    </section>
+
+    <div id="workspace" class="workspace" hidden>
+      <aside class="sidebar" aria-label="التقارير">
+        <div class="sidebar-label">التقارير والتحليل</div>
+        <button class="nav-item active" data-view="dashboard"><span class="nav-icon">◫</span> لوحة التحكم</button>
+        <button class="nav-item" data-view="products"><span class="nav-icon">▦</span> تقرير المنتجات</button>
+        <button class="nav-item" data-view="salespeople"><span class="nav-icon">♙</span> تقرير البائعين</button>
+        <button class="nav-item" data-view="uninvoiced"><span class="nav-icon">⚑</span> الأوامر غير المفوترة <span id="uninvoiced-nav-count" class="nav-count">0</span></button>
+        <button class="nav-item" data-view="returns"><span class="nav-icon">↶</span> تقرير المرتجعات</button>
+        <button class="nav-item" data-view="classification"><span class="nav-icon">☷</span> تصنيف المنتجات</button>
+        <button class="nav-item" data-view="details"><span class="nav-icon">▤</span> تفاصيل البيانات</button>
+        <div class="sidebar-bottom">
+          <div class="sidebar-note-title">طريقة الربط</div>
+          <div class="sidebar-note">الفواتير ↔ التسليمات<br><code>Origin</code> = <code>Source Document</code></div>
+          <div class="sidebar-note">المرتجع ↔ التسليمات<br>مرجع التسليم داخل <code>Source Document</code> للمرتجع، ويُطابق <code>Reference</code> للتسليم.</div>
+        </div>
+      </aside>
+
+      <div class="content-area">
+        <section id="view-dashboard" class="view active">
+          <div class="page-heading">
+            <div><div class="eyebrow">نظرة عامة</div><h2>لوحة التحكم</h2><p>ملخص حركة البيع والتسليم ومدى اكتمال الفوترة.</p></div>
+            <div id="period-label" class="period-chip">الملفات المحمّلة</div>
+          </div>
+          <div id="kpi-grid" class="kpi-grid"></div>
+          <div class="dashboard-grid">
+            <article class="panel chart-panel">
+              <div class="panel-heading"><div><h3>القيمة المسجلة حسب تصنيف المنتج</h3><p>القيم المجمعة من ملف الفواتير فقط</p></div><span class="panel-symbol">▥</span></div>
+              <div id="category-chart" class="bar-chart"></div>
+            </article>
+            <article class="panel chart-panel">
+              <div class="panel-heading"><div><h3>أعلى المنتجات قيمةً</h3><p>وفق القيمة المسجلة في الفواتير</p></div><span class="panel-symbol">↗</span></div>
+              <div id="top-products-chart" class="bar-chart"></div>
+            </article>
+          </div>
+          <div class="dashboard-grid lower-grid">
+            <article class="panel">
+              <div class="panel-heading"><div><h3>جودة البيانات والتنبيهات</h3><p>نقاط ينبغي مراجعتها قبل اعتماد التقرير</p></div><span class="panel-symbol warn-symbol">!</span></div>
+              <div id="quality-notes" class="quality-list"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-heading"><div><h3>ملخص حسب البائع</h3><p>قيمة الفواتير المسجلة لكل بائع</p></div><button class="text-button" data-go-view="salespeople">عرض التفاصيل ←</button></div>
+              <div id="seller-mini-table" class="mini-table-wrap"></div>
+            </article>
+          </div>
+          <div class="source-footnote">تنبيه: الملفات الحالية لا تحتوي على تقرير إنتاج مستقل؛ لذلك يُعرض وزن كل منتج من كميات التسليم والقيمة المسجلة بالفواتير، وليس كنسبة إنتاج مصنعي.</div>
+        </section>
+
+        <section id="view-products" class="view">
+          <div class="page-heading"><div><div class="eyebrow">تحليل تفصيلي</div><h2>تقرير المنتجات</h2><p>الكميات والقيمة المسجلة ومساهمة المنتج، مع إظهار البيانات الناقصة.</p></div><button class="button button-outline" id="export-products">تصدير CSV ↓</button></div>
+          <div class="filter-bar"><label class="search-field"><span>⌕</span><input id="product-search" type="search" placeholder="ابحث باسم المنتج..."></label><label class="filter-select"><span>التصنيف</span><select id="product-category-filter"><option value="all">كل التصنيفات</option><option value="finished">منتجات تامة</option><option value="raw">مواد خام / مبيعات غير مباشرة</option><option value="unclassified">غير مصنف</option></select></label><div id="products-count" class="result-count"></div></div>
+          <div class="panel table-panel"><div class="table-scroll"><table id="products-table"></table></div></div>
+          <p class="table-footnote">القيمة ونسبة المساهمة محسوبتان من الأرقام المتاحة في ملف الفواتير فقط. الكمية بالفاتورة المفقودة لا تُستبدل بصفر عند حساب اكتمال البيانات؛ وتظهر في عمود مستقل.</p>
+        </section>
+
+        <section id="view-salespeople" class="view">
+          <div class="page-heading"><div><div class="eyebrow">أداء فريق المبيعات</div><h2>تقرير البائعين</h2><p>إجمالي كميات وقيم كل بائع، مفصولة إلى منتجات تامة ومواد خام، بدون عدّ سطور الفواتير.</p></div><button class="button button-outline" id="export-sellers">تصدير ملخص البائعين CSV ↓</button></div>
+          <div class="panel table-panel"><div class="panel-heading"><div><h3>ملخص البائعين</h3><p>إجمالي الكميات والقيم لكل تصنيف؛ لا يتم احتساب عدد سطور الفواتير كمبيعات.</p></div></div><div class="table-scroll"><table id="sellers-table"></table></div></div>
+          <div class="panel table-panel separated-panel"><div class="panel-heading"><div><h3>إجمالي كل منتج لكل بائع</h3><p>يعرض مجموع كمية وقيمة كل منتج لكل بائع — مثل التريلات وباقي المنتجات — بعد تجميع كل سطور الفواتير، وليس عدد السطور.</p></div><button class="button button-quiet" id="export-seller-products">تصدير التفاصيل CSV ↓</button></div>
+            <div class="filter-bar compact-filter"><label class="search-field"><span>⌕</span><input id="seller-product-search" type="search" placeholder="ابحث باسم المنتج أو البائع..."></label><label class="filter-select"><span>البائع</span><select id="seller-filter"><option value="all">كل البائعين</option></select></label><label class="filter-select"><span>التصنيف</span><select id="seller-category-filter"><option value="all">كل التصنيفات</option><option value="finished">منتجات تامة</option><option value="raw">مواد خام / مبيعات غير مباشرة</option><option value="unclassified">غير مصنف</option></select></label><div id="seller-product-count" class="result-count"></div></div>
+            <div class="table-scroll"><table id="seller-products-table"></table></div>
+            <p class="table-footnote">الكمية والقيمة لكل صنف هي مجموع البيانات المسجلة في الفواتير لهذا البائع. إذا كان ملف الفواتير لا يحتوي على كمية لصنف معين فلن تُقدّر له كمية من عدد السطور.</p>
+          </div>
+        </section>
+
+        <section id="view-uninvoiced" class="view">
+          <div class="page-heading"><div><div class="eyebrow">متابعة المستندات</div><h2>الأوامر غير المفوترة</h2><p>التسليمات التي لم يظهر لها Origin مطابق في ملف الفواتير.</p></div><button class="button button-outline" id="export-uninvoiced">تصدير CSV ↓</button></div>
+          <div id="uninvoiced-summary" class="inline-stat-row"></div>
+          <div class="callout callout-info"><span class="callout-icon">i</span><div><strong>قاعدة المطابقة</strong><p>يُعتبر أمر التسليم مفوترًا عند وجود قيمة <code>Source Document</code> الخاصة به ضمن قيم <code>Origin</code> في ملف الفواتير. الفحص يتم على مستوى الأمر، وليس على مستوى كل صنف بالفاتورة.</p></div></div>
+          <div class="panel table-panel"><div class="table-scroll"><table id="uninvoiced-table"></table></div></div>
+        </section>
+
+        <section id="view-returns" class="view">
+          <div class="page-heading"><div><div class="eyebrow">حركة المرتجعات</div><h2>تقرير المرتجعات</h2><p>مطابقة مرجع المرتجع بمرجع التسليم الأصلي مع عرض ما أمكن استعادته من تفاصيل.</p></div><button class="button button-outline" id="export-returns">تصدير CSV ↓</button></div>
+          <div class="callout callout-warning"><span class="callout-icon">!</span><div><strong>ملاحظة على الكمية والقيمة</strong><p>ملف المرتجع لا يحتوي على عمود كمية أو منتج أو قيمة. عند العثور على تسليم مطابق، تُعرض كمية التسليم ككمية مرجعية تقديرية وليست كمية مرتجع مؤكدة، ولا يتم خصم قيمة مالية للمرتجع لعدم توفرها.</p></div></div>
+          <div class="panel table-panel"><div class="table-scroll"><table id="returns-table"></table></div></div>
+        </section>
+
+        <section id="view-classification" class="view">
+          <div class="page-heading"><div><div class="eyebrow">إعدادات التقرير</div><h2>تصنيف المنتجات</h2><p>راجع التصنيف المبدئي لكل منتج وغيّره حسب دليل المنتجات المعتمد لديكم.</p></div><button class="button button-outline" id="export-classification">تصدير التصنيفات CSV ↓</button></div>
+          <div class="callout callout-info"><span class="callout-icon">i</span><div><strong>التصنيف المبدئي استرشادي</strong><p>الأسماء التي تبدو كمنتجات نهائية مثل التريلا والقلاب والكساحة تُقترح كمنتجات تامة، وباقي الأصناف تُقترح كمواد خام / مبيعات غير مباشرة. الاختيار النهائي لك ويُحفظ في هذا المتصفح.</p></div></div>
+          <div class="filter-bar"><label class="search-field"><span>⌕</span><input id="classification-search" type="search" placeholder="ابحث عن منتج..."></label><div id="classification-count" class="result-count"></div><button id="reset-classification" class="button button-quiet">إعادة التصنيف المبدئي</button></div>
+          <div class="panel table-panel"><div class="table-scroll"><table id="classification-table"></table></div></div>
+        </section>
+
+        <section id="view-details" class="view">
+          <div class="page-heading"><div><div class="eyebrow">مراجعة المصدر</div><h2>تفاصيل البيانات</h2><p>عرض السجلات المصدرية بعد قراءة الملفات. لا تُحذف المنتجات التي تنقصها كمية أو قيمة.</p></div><button class="button button-outline" id="export-details">تصدير البيانات المعروضة CSV ↓</button></div>
+          <div class="filter-bar"><label class="filter-select"><span>مصدر البيانات</span><select id="details-source"><option value="invoices">الفواتير</option><option value="deliveries">التسليمات</option><option value="returns">المرتجعات</option></select></label><label class="search-field"><span>⌕</span><input id="details-search" type="search" placeholder="بحث في تفاصيل المصدر..."></label><div id="details-count" class="result-count"></div></div>
+          <div class="panel table-panel"><div class="table-scroll"><table id="details-table"></table></div></div>
+        </section>
+      </div>
+    </div>
+
+    <footer class="site-footer"><span>مركز تحليل المبيعات والتسليمات</span><span>تحليل محلي داخل المتصفح · تقارير قابلة للتصدير</span></footer>
+  </main>
+  <noscript><div class="noscript">يلزم تفعيل JavaScript لاستخدام لوحة التحليل.</div></noscript>
+</body>
+</html>
